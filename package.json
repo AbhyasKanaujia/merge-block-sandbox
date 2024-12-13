@@ -1,0 +1,13 @@
+{
+  "name": "merge-block-sandbox",
+  "version": "1.0.0",
+  "description": "",
+  "main": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "private": true,
+  "dependencies": {
+    "@types/p5": "^1.7.6"
+  }
+}
