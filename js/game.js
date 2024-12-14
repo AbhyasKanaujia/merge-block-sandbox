@@ -1,10 +1,7 @@
 let CHIP_SIZE = 50;
 let GRID_WIDTH = 5;
 let GRID_HEIGHT = 7;
-const MERGE_DELAY = 1000;
 const SUFFIX_WITH_NAME = [["", ""], ["K", "Thousand"], ["M", "Million"], ["B", "Billion"], ["T", "Trillion"], ["Q", "Quadrillion"], ["Qi", "Quintillion"], ["Sx", "Sextillion"], ["Sp", "Septillion"], ["Oc", "Octillion"], ["No", "Nonillion"], ["Dc", "Decillion"], ["UDc", "Undecillion"], ["DDc", "Duodecillion"], ["TDc", "Tredecillion"], ["QDc", "Quattuordecillion"], ["QiDc", "Quindecillion"], ["SxDc", "Sexdecillion"], ["SpDc", "Septendecillion"], ["ODc", "Octodecillion"], ["NDc", "Novemdecillion"], ["V", "Vigintillion"], ["UV", "Unvigintillion"], ["DV", "Duovigintillion"], ["TV", "Trevigintillion"], ["QV", "Quattuorvigintillion"], ["QiV", "Quinvigintillion"], ["SxV", "Sexvigintillion"], ["SpV", "Septenvigintillion"], ["OV", "Octovigintillion"], ["NV", "Novemvigintillion"], ["Tr", "Trigintillion"],];
-
-let level = 1;
 
 class Grid {
     // TODO: Move grid related constants to constructor
@@ -17,34 +14,18 @@ class Grid {
             }
         }
         this.computeSizes();
+        this.largestChip = null;
     }
 
-    computeSizes() {
-        this.width = CHIP_SIZE * GRID_WIDTH;
-        this.height = CHIP_SIZE * GRID_HEIGHT;
-        this.gridTopLeftX = (width - this.width) / 2;
-        this.gridTopLeftY = 0;
-    }
+    // CRUD Grid
 
     placeChipAt(row, col, chip) {
         const oldChip = this.getChipAt(row, col);
         this.grid[row][col] = chip
+        if (this.largestChip === null || this.largestChip.compare(chip) < 0) {
+            this.largestChip = chip;
+        }
         return oldChip;
-    }
-
-    getChipAt(row, col) {
-        return (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) ? null : this.grid[row][col];
-    }
-
-    removeChipAt(row, col) {
-        if (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) return undefined;
-        const chip = this.grid[row][col];
-        this.placeChipAt(row, col, null);
-        return chip;
-    }
-
-    isFilled(row, col) {
-        return this.getChipAt(row, col) !== null;
     }
 
     fillChipInCol(col, chip) {
@@ -56,6 +37,10 @@ class Grid {
             }
         }
         return false;
+    }
+
+    getChipAt(row, col) {
+        return (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) ? null : this.grid[row][col];
     }
 
     getChipAtLeftOf(row, col) {
@@ -70,6 +55,14 @@ class Grid {
         return this.getChipAt(row - 1, col);
     }
 
+    removeChipAt(row, col) {
+        if (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) return undefined;
+        const chip = this.grid[row][col];
+        this.placeChipAt(row, col, null);
+        this.updateLargestChip()
+        return chip;
+    }
+
     removeChipAtLeftOf(row, col) {
         return this.removeChipAt(row, col - 1)
     }
@@ -80,6 +73,25 @@ class Grid {
 
     removeChipBelow(row, col) {
         return this.removeChipAt(row - 1, col);
+    }
+
+    isFilled(row, col) {
+        return this.getChipAt(row, col) !== null;
+    }
+
+    // Grid logic
+
+    updateLargestChip() {
+        let largestChip = this.largestChip;
+        for (let row = 0; row < GRID_HEIGHT; row++) {
+            for (let col = 0; col < GRID_WIDTH; col++) {
+                const chip = this.getChipAt(row, col);
+                if (chip && (largestChip === null || largestChip.compare(chip) < 0)) {
+                    largestChip = chip;
+                }
+            }
+        }
+        this.largestChip = largestChip;
     }
 
     fall() {
@@ -169,6 +181,15 @@ class Grid {
         return false;
     }
 
+    // Display
+
+    computeSizes() {
+        this.width = CHIP_SIZE * GRID_WIDTH;
+        this.height = CHIP_SIZE * GRID_HEIGHT;
+        this.gridTopLeftX = (width - this.width) / 2;
+        this.gridTopLeftY = 0;
+    }
+
     showGrid() {
         fill("red");
         for (let row = 0; row <= GRID_WIDTH; row++) {
@@ -187,6 +208,8 @@ class Grid {
         }
     }
 
+    // Interaction
+
     getClickedColumn(posX, posY) {
         if (posX < this.gridTopLeftX || posX > this.gridTopLeftX + this.width || posY < this.gridTopLeftY || posY > this.gridTopLeftY + this.height) return -1;
         return Math.floor((posX - this.gridTopLeftX) / CHIP_SIZE);
@@ -194,17 +217,20 @@ class Grid {
 }
 
 class Chip {
-    constructor({baseValue = null, reducedValue = null, suffix = ""} = {}, posX = null, posY = null) {
+    constructor({baseValue = null, reducedValue = null, suffix = "", level = 1} = {}, posX = null, posY = null) {
         if (baseValue !== null) {
             // If baseValue is provided, compute reducedValue and suffix
             const reduced = this.reduceValueAndSuffix(baseValue);
             this.value = reduced.reducedValue;
             this.suffix = reduced.suffix;
+            this.level = this.getPowerOfTwo();
         } else if (reducedValue !== null && suffix !== "") {
             // If reducedValue and suffix are provided, use them directly
             this.value = reducedValue;
             this.suffix = suffix;
+            this.level = this.getPowerOfTwo();
         } else {
+            this.level = level;
             // If neither is provided, generate a random baseValue
             const reduced = this.reduceValueAndSuffix(this.generateRandomBaseValue());
             this.value = reduced.reducedValue;
@@ -216,10 +242,23 @@ class Chip {
         this.posY = posY ?? height / 2;
     }
 
+    // Value
+
     generateRandomBaseValue() {
         // Generates a random value in the range 2^0 to 2^300
-        return 2 ** Math.floor(Math.random() * level);
+        return 2 ** Math.floor(Math.random() * min(this.level, 300));
     }
+
+    getTier() {
+        return SUFFIX_WITH_NAME.findIndex(([suffix]) => suffix === this.suffix);
+    }
+
+    getFullValue() {
+        // Compute full value by reverse scaling
+        return this.value * Math.pow(10, this.getTier() * 3);
+    }
+
+    // Value logic
 
     reduceValueAndSuffix(value) {
         const tier = Math.floor(Math.log10(value) / 3);
@@ -230,6 +269,33 @@ class Chip {
         const suffix = SUFFIX_WITH_NAME[tier][0];
         return {reducedValue, suffix};
     }
+
+    getPowerOfTwo() {
+        return Math.log2(this.getFullValue());
+    }
+
+    // Chip logic
+
+    compare(otherChip) {
+        // Compare full values
+        if (!otherChip) return 1;
+        const difference = this.getFullValue() - otherChip.getFullValue();
+        return Math.sign(difference);
+    }
+
+    combine(otherChip) {
+        // Combine full values and create a new Chip
+        const largerChipValue = Math.max(this.getFullValue(), otherChip.getFullValue());
+        const combinedValue = largerChipValue * 2;
+        return new Chip({baseValue: combinedValue});
+    }
+
+    equals(otherChip) {
+        if (!otherChip) return false;
+        return this.value === otherChip.value && this.suffix === otherChip.suffix;
+    }
+
+    // Display
 
     displayValue() {
         return `${this.value}${this.suffix}`;
@@ -276,32 +342,6 @@ class Chip {
         return fontSize;
     }
 
-    getTier() {
-        return SUFFIX_WITH_NAME.findIndex(([suffix]) => suffix === this.suffix);
-    }
-
-    getFullValue() {
-        // Compute full value by reverse scaling
-        return this.value * Math.pow(10, this.getTier() * 3);
-    }
-
-    compare(otherChip) {
-        // Compare full values
-        const difference = this.getFullValue() - otherChip.getFullValue();
-        return Math.sign(difference);
-    }
-
-    combine(otherChip) {
-        // Combine full values and create a new Chip
-        const largerChipValue = Math.max(this.getFullValue(), otherChip.getFullValue());
-        const combinedValue = largerChipValue * 2;
-        return new Chip({baseValue: combinedValue});
-    }
-
-    equals(otherChip) {
-        if (!otherChip) return false;
-        return this.value === otherChip.value && this.suffix === otherChip.suffix;
-    }
 }
 
 function setSizes() {
@@ -338,6 +378,7 @@ function mousePressed() {
     const col = grid.getClickedColumn(mouseX, mouseY);
     if (col !== -1) {
         grid.fillChipInCol(col, nextChip);
+        nextChip = new Chip({level: grid.largestChip.level});
     }
 
 }
