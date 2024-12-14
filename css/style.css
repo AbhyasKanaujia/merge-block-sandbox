@@ -1,7 +1,13 @@
 * {
     margin: 0;
     padding: 0;
-    box-sizing: border-box;
+    border: 0;
+}
+
+body {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
 }
 
 header {
@@ -10,7 +16,5 @@ header {
 }
 
 #game-container {
-    border: 1px solid black;
-    display: flex;
-    justify-content: center;
+    height: 100%;
 }
