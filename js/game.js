@@ -284,7 +284,6 @@ class Grid {
             const combinedChip = currentChip.combine(leftChip);
             this.removeChipAtLeftOf(row, col);
 
-
             this.placeChipAt(row, col, combinedChip);
 
             this.fall();
@@ -514,10 +513,10 @@ function windowResized() {
     setSizes();
 }
 
-function mousePressed() {
+function handleInput(inputX, inputY) {
     if (!disableInput) {
         disableInput = true;
-        const col = grid.getClickedColumn(mouseX, mouseY);
+        const col = grid.getClickedColumn(inputX, inputY);
         if (col !== -1) {
             const chipAdded = grid.dropChipInCol(col, nextChip);
             if (chipAdded) {
@@ -526,4 +525,13 @@ function mousePressed() {
         }
         disableInput = false;
     }
+}
+
+function mousePressed() {
+    handleInput(mouseX, mouseY)
+}
+
+function touchStarted() {
+    const touch = touches[0];
+    if(touch) handleInput(touch.x, touch.y)
 }
