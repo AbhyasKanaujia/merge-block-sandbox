@@ -3,6 +3,56 @@ let GRID_WIDTH = 5;
 let GRID_HEIGHT = 7;
 const SUFFIX_WITH_NAME = [["", ""], ["K", "Thousand"], ["M", "Million"], ["B", "Billion"], ["T", "Trillion"], ["Q", "Quadrillion"], ["Qi", "Quintillion"], ["Sx", "Sextillion"], ["Sp", "Septillion"], ["Oc", "Octillion"], ["No", "Nonillion"], ["Dc", "Decillion"], ["UDc", "Undecillion"], ["DDc", "Duodecillion"], ["TDc", "Tredecillion"], ["QDc", "Quattuordecillion"], ["QiDc", "Quindecillion"], ["SxDc", "Sexdecillion"], ["SpDc", "Septendecillion"], ["ODc", "Octodecillion"], ["NDc", "Novemdecillion"], ["V", "Vigintillion"], ["UV", "Unvigintillion"], ["DV", "Duovigintillion"], ["TV", "Trevigintillion"], ["QV", "Quattuorvigintillion"], ["QiV", "Quinvigintillion"], ["SxV", "Sexvigintillion"], ["SpV", "Septenvigintillion"], ["OV", "Octovigintillion"], ["NV", "Novemvigintillion"], ["Tr", "Trigintillion"],];
 
+// Game state
+let disableInput = false;
+let nextChip;
+let grid;
+
+movingChips = [];
+
+class MovingChip {
+    constructor(startRow, startCol, endRow, endCol, direction, chip) {
+        this.endRow = endRow;
+        this.endCol = endCol;
+
+        const {x: startX, y: startY} = grid.getCellCoordinates(startRow, startCol);
+        const {x: endX, y: endY} = grid.getCellCoordinates(endRow, endCol);
+
+        this.posX = startX;
+        this.posY = startY;
+        this.endX = endX;
+        this.endY = endY;
+        this.chip = chip;
+        this.direction = direction;
+        this.speed = CHIP_SIZE / 4;
+    }
+
+    move() {
+        switch (this.direction) {
+            case "UP":
+                this.posY = min(this.posY + this.speed, this.endY);
+                break;
+            case "DOWN":
+                this.posY = max(this.posY - this.speed, this.endY);
+                break;
+            case "LEFT":
+                this.posX = max(this.posX - this.speed, this.endX);
+                break;
+            case "RIGHT":
+                this.posX = min(this.posX + this.speed, this.endX);
+                break;
+        }
+        this.chip.display(this.posX, this.posY);
+        if (this.isAtTarget()) {
+            grid.placeChipAt(this.endRow, this.endCol, this.chip);
+        }
+    }
+
+    isAtTarget() {
+        return this.posX === this.endX && this.posY === this.endY;
+    }
+}
+
 class Grid {
     // TODO: Move grid related constants to constructor
     constructor() {
@@ -17,7 +67,7 @@ class Grid {
         this.largestChip = null;
     }
 
-    // CRUD Grid
+    // CRUD Chips
 
     placeChipAt(row, col, chip) {
         const oldChip = this.getChipAt(row, col);
@@ -28,11 +78,10 @@ class Grid {
         return oldChip;
     }
 
-    fillChipInCol(col, chip) {
+    dropChipInCol(col, chip) {
         for (let row = 0; row < GRID_HEIGHT; row++) {
             if (!this.isFilled(row, col)) {
-                this.placeChipAt(row, col, chip);
-                this.merge(row, col)
+                movingChips.push(new MovingChip(GRID_HEIGHT, col, row, col, "DOWN", chip))
                 return true;
             }
         }
@@ -57,7 +106,7 @@ class Grid {
 
     removeChipAt(row, col) {
         if (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) return undefined;
-        const chip = this.grid[row][col];
+        const chip = this.getChipAt(row, col);
         this.placeChipAt(row, col, null);
         this.updateLargestChip()
         return chip;
@@ -81,6 +130,12 @@ class Grid {
 
     // Grid logic
 
+    getCellCoordinates(row, col) {
+        return {
+            x: this.gridTopLeftX + CHIP_SIZE * col + CHIP_SIZE / 2, y: this.gridTopLeftY + CHIP_SIZE * row + CHIP_SIZE / 2
+        }
+    }
+
     updateLargestChip() {
         let largestChip = this.largestChip;
         for (let row = 0; row < GRID_HEIGHT; row++) {
@@ -95,6 +150,7 @@ class Grid {
     }
 
     fall() {
+        let chipsMoved = false;
         for (let col = 0; col < GRID_WIDTH; col++) {
             for (let row = 0; row < GRID_HEIGHT - 1; row++) {
                 if (!this.isFilled(row, col)) {
@@ -102,13 +158,32 @@ class Grid {
                     if (chip !== null) {
                         this.removeChipAt(row + 1, col);
                         this.placeChipAt(row, col, chip);
+                        chipsMoved = true;
                     }
                 }
             }
         }
+        return chipsMoved;
     }
 
-    merge(row, col) {
+    mergeAll() {
+        let chipsMerged = false;
+        for (let col = 0; col < GRID_WIDTH; col++) {
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                const merged = this.mergeAt(row, col);
+                chipsMerged ||= merged;
+            }
+        }
+
+        if (chipsMerged) {
+            this.mergeAll();
+        }
+    }
+
+
+    mergeAt(row, col) {
+        if (!this.isFilled(row, col)) return false;
+
         const currentChip = this.getChipAt(row, col);
         const leftChip = this.getChipAtLeftOf(row, col);
         const rightChip = this.getChipAtRightOf(row, col);
@@ -130,51 +205,100 @@ class Grid {
 
             // Place the combined chip below
             this.placeChipAt(row - 1, col, combinedChip);
+
             this.fall();
-            this.merge(row - 1, col);
+            this.mergeAt(row, col);
+
+            return true;
+        }
+
+        // Merge left and below
+        if (currentChip.equals(leftChip) && currentChip.equals(belowChip)) {
+            const combinedChip = currentChip.combine(leftChip).combine(belowChip);
+
+            this.removeChipAt(row, col);
+            this.removeChipAtLeftOf(row, col);
+            this.removeChipBelow(row, col);
+
+            this.placeChipAt(row, col, combinedChip);
+
+            this.fall();
+            this.mergeAt(row, col);
+
+            return true;
+        }
+
+        // Merge right and below
+        if (currentChip.equals(rightChip) && currentChip.equals(belowChip)) {
+            const combinedChip = currentChip.combine(rightChip).combine(belowChip);
+
+            this.removeChipAt(row, col);
+            this.removeChipAtRightOf(row, col);
+            this.removeChipBelow(row, col);
+
+            this.placeChipAt(row, col, combinedChip);
+
+            this.fall();
+            this.mergeAt(row, col);
+
             return true;
         }
 
         // Merge Left and Right
         if (currentChip.equals(leftChip) && currentChip.equals(rightChip)) {
             const combinedChip = currentChip.combine(leftChip).combine(rightChip);
-            // use function to place chips
+
             this.removeChipAt(row, col);
             this.removeChipAtLeftOf(row, col);
             this.removeChipAtRightOf(row, col);
+
             this.placeChipAt(row, col, combinedChip);
+
             this.fall();
-            this.merge(row, col);
+            this.mergeAt(row, col);
+
             return true;
         }
 
         // Merge right
         if (currentChip.equals(rightChip)) {
             const combinedChip = currentChip.combine(rightChip);
+
             this.removeChipAtRightOf(row, col);
+
             this.placeChipAt(row, col, combinedChip);
+
             this.fall();
-            this.merge(row, col);
+            this.mergeAt(row, col);
+
             return true;
         }
 
         // Merge Left
         if (currentChip.equals(leftChip)) {
             const combinedChip = currentChip.combine(leftChip);
+
             this.removeChipAtLeftOf(row, col);
+
             this.placeChipAt(row, col, combinedChip);
+
             this.fall();
-            this.merge(row, col);
+            this.mergeAt(row, col);
+
             return true;
         }
 
         // Merge down
         if (currentChip.equals(belowChip)) {
             const combinedChip = currentChip.combine(belowChip);
+
             this.removeChipAt(row, col);
+
             this.placeChipAt(row - 1, col, combinedChip);
+
             this.fall();
-            this.merge(row - 1, col);
+            this.mergeAt(row, col);
+
             return true;
         }
 
@@ -344,15 +468,22 @@ class Chip {
 
 }
 
+function updateMovingChips() {
+    movingChips.forEach(movingChip => {
+        movingChip.move();
+        if (movingChip.isAtTarget()) {
+            movingChips.splice(movingChips.indexOf(movingChip), 1);
+            grid.mergeAll();
+        }
+    })
+}
+
 function setSizes() {
     const container = document.getElementById('game-container');
     resizeCanvas(container.offsetWidth, container.offsetHeight);
     CHIP_SIZE = container.offsetHeight / 10;
     grid?.computeSizes();
 }
-
-let nextChip;
-let grid;
 
 function setup() {
     const container = document.getElementById('game-container');
@@ -368,6 +499,8 @@ function draw() {
     background(200);
     grid.showGrid();
     nextChip.display(width / 2, height - CHIP_SIZE * 1.5);
+    console.debug(movingChips)
+    updateMovingChips()
 }
 
 function windowResized() {
@@ -375,10 +508,16 @@ function windowResized() {
 }
 
 function mousePressed() {
-    const col = grid.getClickedColumn(mouseX, mouseY);
-    if (col !== -1) {
-        grid.fillChipInCol(col, nextChip);
-        nextChip = new Chip({level: grid.largestChip.level});
+    if (!disableInput) {
+        disableInput = true;
+        const col = grid.getClickedColumn(mouseX, mouseY);
+        if (col !== -1) {
+            const chipAdded = grid.dropChipInCol(col, nextChip);
+            if (chipAdded) {
+                grid.mergeAll();
+                nextChip = new Chip({level: (grid.largestChip?.level || 1)});
+            }
+        }
+        disableInput = false;
     }
-
 }
